@@ -16,6 +16,7 @@ export default function ProfilePage() {
   const params = useSearchParams();
   const userId = useSelector((state) => state.chatWith.chatWith);
   const isSelf = params.get("view") === "self";
+  const [media, setMedia] = useState([]);
 
   const fetchUserData = async () => {
     try {
@@ -41,9 +42,29 @@ export default function ProfilePage() {
     }
   };
 
+  const getMedia = () => {
+    axios
+      .post(
+        process.env.NEXT_PUBLIC_API_URL + "/message/get-all-msg",
+        { withUserId: userId },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + Cookies.get("chat-token"),
+          },
+        }
+      )
+      .then((response) => {
+        setMedia(response.data.data);
+      })
+      .catch((error) => {
+        toast.error("Failed to load media. ");
+      });
+  };
   useEffect(() => {
     if (isSelf || userId) {
       fetchUserData();
+      getMedia();
     }
   }, [userId, isSelf]);
 
@@ -64,7 +85,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-4xl">
+    <div className="container mx-auto p-4 md:p-6 max-w-4xl h-screen overflow-y-auto no-scrollbar">
       <Card className="overflow-hidden">
         <div className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground p-8">
           <div className="flex flex-col md:flex-row items-center gap-8">
@@ -161,6 +182,26 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
+      {/* media imgs */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Media</CardTitle>
+        </CardHeader>
+        <CardContent className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-4">
+          {media.map(
+            (img, i) =>
+              img.image && (
+                <div key={i} className="mb-4 break-inside-avoid rounded-2xl border border-gray-200 p-1">
+                  <img
+                    src={img.image}
+                    alt=""
+                    className="w-full cursor-pointer rounded-sm border border-gray-200 dark:border-gray-700"
+                  />
+                </div>
+              )
+          )}
         </CardContent>
       </Card>
     </div>

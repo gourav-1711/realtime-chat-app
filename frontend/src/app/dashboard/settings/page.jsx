@@ -105,12 +105,11 @@ export default function SettingsPage() {
         data.append("avatar", images[0].file);
       }
 
-      await axios.put(
+      await axios.post(
         process.env.NEXT_PUBLIC_API_URL + "/user/update-profile",
         data,
         {
           headers: {
-            "Content-Type": "multipart/form-data",
             Authorization: "Bearer " + Cookies.get("chat-token"),
           },
         }
@@ -368,7 +367,9 @@ export default function SettingsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className={"text-white"}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className={"text-white"}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmLogout}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-white"
