@@ -17,4 +17,15 @@ const decodeToken = (token) => {
   return decoded.id;
 };
 
-module.exports = { genrateToken, decodeToken };
+
+function generateOtpToken(email) {
+  const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+  const token = jwt.sign(
+    { email, otp },
+    process.env.JWT_SECRET,
+    { expiresIn: "5m" } // OTP valid for 5 minutes
+  );
+  return { otp, token };
+}
+
+module.exports = { genrateToken, decodeToken, generateOtpToken };

@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { openLightBox } from "@/app/(redux)/features/lightBox";
 
 export default function ProfilePage() {
   const [user, setUser] = useState(null);
@@ -67,6 +68,8 @@ export default function ProfilePage() {
       getMedia();
     }
   }, [userId, isSelf]);
+
+  const dispatch = useDispatch();
 
   if (loading) {
     return (
@@ -193,8 +196,26 @@ export default function ProfilePage() {
           {media.map(
             (img, i) =>
               img.image && (
-                <div key={i} className="mb-4 break-inside-avoid rounded-2xl border border-gray-200 p-1">
+                <div
+                  key={i}
+                  className="mb-4 break-inside-avoid rounded-2xl border border-gray-200 p-1"
+                >
                   <img
+                    onClick={() =>
+                      dispatch(
+                        openLightBox({
+                          open: true,
+                          image: {
+                            src: img.image,
+                            alt: img.image,
+                            title: img.image,
+                            description: img.image,
+                          },
+                          images: img.image,
+                          index: i,
+                        })
+                      )
+                    }
                     src={img.image}
                     alt=""
                     className="w-full cursor-pointer rounded-sm border border-gray-200 dark:border-gray-700"

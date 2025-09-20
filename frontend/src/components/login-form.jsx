@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import axios from "axios";
 import Cookies from "js-cookie";
+import Link from "next/link";
 
 export function LoginForm({ className, ...props }) {
   const [mode, setMode] = useState("login");
@@ -116,12 +117,12 @@ export function LoginForm({ className, ...props }) {
             <div className="grid gap-3">
               <div className="flex items-center">
                 <Label htmlFor="password">Password</Label>
-                <a
-                  href="#"
+                <Link
+                  href="/dashboard/forgot-password"
                   className="ml-auto text-sm underline-offset-4 hover:underline"
                 >
                   Forgot your password?
-                </a>
+                </Link>
               </div>
               <Input name="password" id="password" type="password" required />
             </div>

@@ -1,4 +1,5 @@
 import { AppSidebar } from "@/components/app-sidebar";
+import LightBox from "@/components/LightBox";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import React from "react";
 
@@ -19,6 +20,7 @@ export default function Layout({ children }) {
           <AppSidebar/>
 
         <div className="flex-1 flex flex-col">{children}</div>
+        <LightBox/>
       </SidebarProvider>
     </div>
   );

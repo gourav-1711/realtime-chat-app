@@ -29,6 +29,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { removeChatWith } from "@/app/(redux)/features/chatWith";
+import Link from "next/link";
+import { useDispatch } from "react-redux";
+import { updateProfile } from "@/app/(redux)/features/profile";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -50,7 +53,7 @@ export default function SettingsPage() {
   const onChange = (imageList) => {
     setImages(imageList);
   };
-
+  const dispatch = useDispatch();
   const fetchUserData = async () => {
     try {
       setLoading(true);
@@ -71,6 +74,15 @@ export default function SettingsPage() {
         description: userData.description || "",
         avatar: userData.avatar || "",
       });
+      dispatch(
+        updateProfile({
+          name: userData.name || "",
+          email: userData.email || "",
+          mobile: userData.mobile || "",
+          description: userData.description || "",
+          avatar: userData.avatar || "",
+        })
+      );
     } catch (error) {
       toast.error("Failed to load profile data. Please try again.");
     } finally {
@@ -148,14 +160,14 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen w-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-4 md:p-6 max-w-4xl">
+    <div className="container mx-auto p-4 md:p-6 max-w-4xl h-screen overflow-y-auto no-scrollbar">
       <Card className="overflow-hidden">
         <CardHeader>
           <div className="flex justify-between items-center">
@@ -334,6 +346,13 @@ export default function SettingsPage() {
                   {formData.description?.length || 0}/250 characters
                 </p>
               </div>
+
+              <Link
+                href="/dashboard/forgot-password"
+                className="-mt-4 text-primary hover:underline cursor-pointer"
+              >
+                Forgot Password ?
+              </Link>
             </div>
 
             <div className="flex justify-end pt-4 border-t">
@@ -367,9 +386,7 @@ export default function SettingsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className={"text-white"}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmLogout}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-white"

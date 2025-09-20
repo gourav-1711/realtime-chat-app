@@ -26,12 +26,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import axios from "axios";
 import Cookies from "js-cookie";
 import EmojiPicker from "emoji-picker-react";
 import { io } from "socket.io-client";
 import { useRouter } from "next/navigation";
+import { openLightBox } from "@/app/(redux)/features/lightBox";
 
 export default function ChatPage() {
   const router = useRouter();
@@ -241,6 +242,7 @@ export default function ChatPage() {
       setSelectedImage(null);
     }
   };
+  const dispatch = useDispatch();
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -258,7 +260,11 @@ export default function ChatPage() {
           </Avatar>
           <div>
             <h2 className="font-semibold">{user?.name}</h2>
-            <p className={`text-xs text-gray-500 ${user?.status === "online" ? "text-green-500" : "text-red-500"}`}>
+            <p
+              className={`text-xs text-gray-500 ${
+                user?.status === "online" ? "text-green-500" : "text-red-500"
+              }`}
+            >
               {user?.status === "online" ? "online" : "offline"}
             </p>
           </div>
@@ -272,7 +278,7 @@ export default function ChatPage() {
       <div className="flex-1 p-4 overflow-y-auto no-scrollbar bg-[#e5ddd5] dark:bg-gray-700 bg-opacity-30">
         <div id="msg-box" className="space-y-2">
           {messages.length > 0 ? (
-            messages.map((msg) => (
+            messages.map((msg, i) => (
               <div
                 key={msg._id}
                 className={`flex ${
@@ -291,8 +297,23 @@ export default function ChatPage() {
                   {msg.image && (
                     <img
                       src={msg.image}
+                      onClick={() =>
+                        dispatch(
+                          openLightBox({
+                            open: true,
+                            image: {
+                              src: msg.image,
+                              alt: msg.image,
+                              title: msg.image,
+                              description: msg.image,
+                            },
+                            images: msg.image,
+                            index: i,
+                          })
+                        )
+                      }
                       alt="Message Image"
-                      className="w-full h-auto rounded-lg"
+                      className="w-full h-auto rounded-lg cursor-pointer"
                     />
                   )}
                   <p className="text-sm">{msg.message}</p>

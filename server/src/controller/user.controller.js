@@ -1,8 +1,11 @@
 const { hashPassword, comparePassword } = require("../lib/bycrpt");
 const User = require("../models/user");
-const {genrateToken} = require("../lib/jwt");
+const { genrateToken, generateOtpToken } = require("../lib/jwt");
 const cloudinary = require("../lib/cloudinary");
 const fs = require("fs");
+const nodemailer = require("nodemailer");
+const jwt = require("jsonwebtoken");
+const bycrpt = require("bcrypt");
 
 const register = async (req, res) => {
   const { name, email, password } = req.body;
@@ -156,7 +159,6 @@ const findUsers = async (req, res) => {
       return res.status(400).json({ message: "Please provide a search field" });
     }
 
-
     const users = await User.find({ $or: conditions }).select("-password");
 
     res.status(200).json({
@@ -171,7 +173,6 @@ const findUsers = async (req, res) => {
 };
 
 const selectedUser = async (req, res) => {
-  
   const selectedUserId = req.body.selectedUserId;
 
   if (!selectedUserId) {
@@ -179,7 +180,9 @@ const selectedUser = async (req, res) => {
   }
 
   try {
-    const selectedUser = await User.findById(selectedUserId).select("-password");
+    const selectedUser = await User.findById(selectedUserId).select(
+      "-password"
+    );
 
     if (!selectedUser) {
       return res.status(400).json({ message: "User not found" });
@@ -196,4 +199,97 @@ const selectedUser = async (req, res) => {
   }
 };
 
-module.exports = { register, login, profile, findUsers, updateProfile , selectedUser};
+const forgotPassword = async (req, res) => {
+  const { email } = req.body; // better take from body, not req.user
+
+  try {
+    const { otp, token } = generateOtpToken(email);
+
+    // Send email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.MY_GMAIL,
+        pass: process.env.MY_GMAIL_PASSWORD,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"My Chat App" <${process.env.MY_GMAIL}>`,
+      to: email,
+      subject: "Your OTP Code",
+      text: `Your OTP code is ${otp}. It will expire in 5 minutes.`,
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: "OTP sent successfully",
+      token, // send back token so frontend can send it later
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+};
+
+const verifyOtp = async (req, res) => {
+  const { email, otp, token } = req.body;
+
+  if (!email || !otp || !token) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    if (decoded.email !== email || decoded.otp !== otp) {
+      return res.status(400).json({ status: "error", message: "Invalid OTP" });
+    }
+
+    res.status(200).json({
+      status: "success",
+      message: "OTP verified successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ status: "error", message: "Internal server error" });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  const { email, otp, newPassword, token } = req.body;
+
+  try {
+
+    // Hash new password
+    const hashedPassword = await bycrpt.hash(newPassword, 10);
+
+    // Update user in DB
+    await User.findOneAndUpdate({ email }, { password: hashedPassword });
+
+    res.status(200).json({
+      status: "success",
+      message: "Password reset successfully",
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({
+      status: "error",
+      message: error.message.includes("expired")
+        ? "OTP expired"
+        : "Invalid token",
+    });
+  }
+};
+
+module.exports = {
+  register,
+  login,
+  profile,
+  findUsers,
+  updateProfile,
+  selectedUser,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
+};
