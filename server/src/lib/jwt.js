@@ -7,16 +7,24 @@ const genrateToken = (user) => {
     },
     process.env.JWT_SECRET,
     {
-      expiresIn: "3d",
+      expiresIn: "7d",
     }
   );
 };
 
 const decodeToken = (token) => {
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  return decoded.id;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded.id;
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      console.error("Token expired at:", err.expiredAt);
+      return null;
+    }
+    console.error("Invalid token:", err.message);
+    return null;
+  }
 };
-
 
 function generateOtpToken(email) {
   const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits

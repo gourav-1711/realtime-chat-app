@@ -15,10 +15,13 @@ function initIO(server) {
 
   io.on("connection", async (socket) => {
     socket.on("add-user", async (userId) => {
-       if(!userId){
+      if (!userId) {
         return;
-       }
+      }
       const decodedId = decodeToken(userId);
+      if (!decodedId) {
+        return;
+      }
 
       onlineUsers.set(decodedId, socket.id);
       io.emit("online-users", Array.from(onlineUsers.keys()));
@@ -33,8 +36,8 @@ function initIO(server) {
         if (sId === socket.id) {
           onlineUsers.delete(userId);
           io.emit("user-offline", userId);
-          if(userId){
-            await User.findByIdAndUpdate(userId, { status : "offline" });
+          if (userId) {
+            await User.findByIdAndUpdate(userId, { status: "offline" });
           }
           io.emit("user-status", { userId: userId, status: "offline" });
           break;
@@ -53,4 +56,4 @@ function getIO() {
   return io;
 }
 
-module.exports = { initIO, getIO ,onlineUsers};
+module.exports = { initIO, getIO, onlineUsers };
