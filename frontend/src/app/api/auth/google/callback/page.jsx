@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
-export default function GoogleCallbackPage() {
+function GoogleCallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -44,5 +44,22 @@ export default function GoogleCallbackPage() {
         <p className="text-lg text-muted-foreground">Completing sign in...</p>
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen bg-background">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-lg text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+      }
+    >
+      <GoogleCallbackContent />
+    </Suspense>
   );
 }
