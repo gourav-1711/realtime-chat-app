@@ -11,7 +11,9 @@ import { toast } from "sonner";
 import { useDispatch, useSelector } from "react-redux";
 import { openLightBox } from "@/app/(redux)/features/lightBox";
 
-export default function ProfilePage() {
+import { Suspense } from "react";
+
+function ProfilePageContent() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const params = useSearchParams();
@@ -31,7 +33,7 @@ export default function ProfilePage() {
           headers: {
             Authorization: "Bearer " + Cookies.get("chat-token"),
           },
-        }
+        },
       );
 
       setUser(response.data.data);
@@ -53,7 +55,7 @@ export default function ProfilePage() {
             "Content-Type": "application/json",
             Authorization: "Bearer " + Cookies.get("chat-token"),
           },
-        }
+        },
       )
       .then((response) => {
         setMedia(response.data.data);
@@ -210,10 +212,11 @@ export default function ProfilePage() {
                             alt: img.image,
                             title: img.image,
                             description: img.image,
+                            // description: img.image,
                           },
                           images: img.image,
                           index: i,
-                        })
+                        }),
                       )
                     }
                     src={img.image}
@@ -221,10 +224,24 @@ export default function ProfilePage() {
                     className="w-full cursor-pointer rounded-sm border border-gray-200 dark:border-gray-700"
                   />
                 </div>
-              )
+              ),
           )}
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function ProfilePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <ProfilePageContent />
+    </Suspense>
   );
 }
