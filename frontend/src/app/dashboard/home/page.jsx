@@ -1,111 +1,137 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
-  Paperclip,
-  Mic,
   Smile,
   Send,
-  MoreVertical,
-  Phone,
-  Video,
-  Search,
   Image as ImageIcon,
   X,
   Check,
   ArrowRight,
+  MessageSquare,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 import ImageUploading from "react-images-uploading";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useDispatch, useSelector } from "react-redux";
 import axios from "axios";
 import Cookies from "js-cookie";
 import EmojiPicker from "emoji-picker-react";
-import { io } from "socket.io-client";
 import { useRouter } from "next/navigation";
 import { openLightBox } from "@/app/(redux)/features/lightBox";
+import { useSocket } from "@/components/socket-context";
+import { motion, AnimatePresence } from "framer-motion";
 
 export default function ChatPage() {
   const router = useRouter();
-  //////////////////////////
+  const { socket, isConnected } = useSocket();
+  const messagesEndRef = useRef(null);
+
   const [showPicker, setShowPicker] = useState(false);
   const selectedUserId = useSelector((state) => state.chatWith.chatWith);
-  // Sample messages
   const [messages, setMessages] = useState([]);
-
   const [message, setMessage] = useState("");
   const [user, setUser] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const dispatch = useDispatch();
+  const typingTimeoutRef = useRef(null);
 
-  const socket = io(process.env.NEXT_PUBLIC_API, {
-    transports: ["websocket", "polling"],
-  });
-
+  // Socket event handlers
   useEffect(() => {
-    socket.on("connect", () => {
-      // Add user to online users
-      socket.emit("add-user", Cookies.get("chat-token"));
-    });
+    if (!socket) return;
 
-    socket.on("user-status", ({ userId, status }) => {
-      if (userId == selectedUserId) {
-        setUser({ ...user, status });
+    const handleUserStatus = ({ userId, status }) => {
+      if (userId === selectedUserId) {
+        setUser((prev) => (prev ? { ...prev, status } : null));
       }
-    });
+    };
 
-    socket.on("receive-message", (message) => {
-      setMessages((prevMessages) => [...prevMessages, message]);
-    });
+    const handleReceiveMessage = (newMessage) => {
+      setMessages((prevMessages) => [...prevMessages, newMessage]);
+    };
 
-    socket.on("update-message", ({ messageId, isRead }) => {
+    const handleUpdateMessage = ({ messageId, isRead }) => {
       setMessages((prevMsgs) =>
         prevMsgs.map((msg) =>
-          msg._id === messageId ? { ...msg, isRead } : msg
-        )
+          msg._id === messageId ? { ...msg, isRead } : msg,
+        ),
       );
-    });
+    };
+
+    const handleTyping = ({ userId, typing }) => {
+      if (userId === selectedUserId) {
+        setIsTyping(typing);
+      }
+    };
+
+    socket.on("user-status", handleUserStatus);
+    socket.on("receive-message", handleReceiveMessage);
+    socket.on("update-message", handleUpdateMessage);
+    socket.on("user-typing", handleTyping);
 
     return () => {
-      socket.off("connect");
-      socket.off("user-status");
-      socket.off("receive-message");
-      socket.off("update-message");
+      socket.off("user-typing", handleTyping);
+      socket.off("message-sent", handleMessageSent);
+      socket.off("message-error", handleMessageError);
     };
-  }, [socket]);
-  // Socket connection
+  }, [socket, selectedUserId]);
 
+  // Handle message sent confirmation
+  const handleMessageSent = useCallback((sentMessage) => {
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.isPending && msg.message === sentMessage.message
+          ? { ...sentMessage, isPending: false }
+          : msg,
+      ),
+    );
+  }, []);
+
+  // Handle message send error
+  const handleMessageError = useCallback((error) => {
+    console.error("Message send error:", error);
+    // You might want to show a toast here
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
+    socket.on("message-sent", handleMessageSent);
+    socket.on("message-error", handleMessageError);
+
+    return () => {
+      socket.off("message-sent", handleMessageSent);
+      socket.off("message-error", handleMessageError);
+    };
+  }, [socket, handleMessageSent, handleMessageError]);
+
+  // Mark last message as read
   useEffect(() => {
     const lastIndex = messages.length - 1;
     const lastMsgObj = messages[lastIndex];
     if (!lastMsgObj || lastMsgObj.isRead) {
       return;
     }
-    if (lastMsgObj.sender_id == selectedUserId) {
-      axios.post(
-        process.env.NEXT_PUBLIC_API_URL +
-          "/message/mark-as-read/" +
-          lastMsgObj._id,
-        {},
-        {
-          headers: {
-            Authorization: "Bearer " + Cookies.get("chat-token"),
-          },
-        }
-      );
+    if (lastMsgObj.sender_id === selectedUserId) {
+      // Use socket to mark as read
+      if (socket) {
+        socket.emit("mark-as-read", {
+          messageId: lastMsgObj._id,
+          senderId: lastMsgObj.sender_id,
+        });
+      }
     }
-  }, [messages]);
+  }, [messages, selectedUserId, socket]);
 
-  /////////////////////////////////////
-  const getUser = () => {
+  // Fetch user and messages
+  const getUser = useCallback(() => {
+    if (!selectedUserId) return;
+
     axios
       .post(
         process.env.NEXT_PUBLIC_API_URL + "/user/selected-user",
@@ -115,7 +141,7 @@ export default function ChatPage() {
             "Content-Type": "application/json",
             Authorization: "Bearer " + Cookies.get("chat-token"),
           },
-        }
+        },
       )
       .then((response) => {
         setUser(response.data.data);
@@ -123,9 +149,12 @@ export default function ChatPage() {
       .catch((error) => {
         setUser(null);
       });
-  };
+  }, [selectedUserId]);
 
-  const getMsg = () => {
+  const getMsg = useCallback(() => {
+    if (!selectedUserId) return;
+    setLoading(true);
+
     axios
       .post(
         process.env.NEXT_PUBLIC_API_URL + "/message/get-all-msg",
@@ -135,15 +164,20 @@ export default function ChatPage() {
             "Content-Type": "application/json",
             Authorization: "Bearer " + Cookies.get("chat-token"),
           },
-        }
+        },
       )
       .then((response) => {
         setMessages(response.data.data);
       })
-      .catch((error) => {});
-  };
+      .catch((error) => {})
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [selectedUserId]);
 
-  const setAsRead = () => {
+  const setAsRead = useCallback(() => {
+    if (!selectedUserId) return;
+
     axios.post(
       process.env.NEXT_PUBLIC_API_URL +
         "/message/mark-all-as-read/" +
@@ -153,36 +187,73 @@ export default function ChatPage() {
         headers: {
           Authorization: "Bearer " + Cookies.get("chat-token"),
         },
-      }
+      },
     );
-  };
-
-  useEffect(() => {
-    getUser();
-    getMsg();
-    setAsRead();
   }, [selectedUserId]);
 
   useEffect(() => {
-    const box = document.getElementById("msg-box");
-    if (box && box.lastElementChild) {
-      box.lastElementChild.scrollIntoView({ behavior: "smooth" });
+    if (selectedUserId) {
+      getUser();
+      getMsg();
+      setAsRead();
     }
+  }, [selectedUserId, getUser, getMsg, setAsRead]);
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Sample chat data
+  // Handle typing indicator with debounce
+  const handleTyping = useCallback(() => {
+    if (socket && selectedUserId) {
+      socket.emit("typing", { receiverId: selectedUserId, typing: true });
 
-  const handleSendMessage = (e) => {
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Set new timeout
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit("typing", { receiverId: selectedUserId, typing: false });
+      }, 2000);
+    }
+  }, [socket, selectedUserId]);
+
+  const handleSendMessage = async (e) => {
     e.preventDefault();
+    if (sending) return;
+    if (!message.trim() && !selectedImage) return;
 
-    if (selectedImage) {
-      const formData = new FormData();
-      formData.append("receiver_id", selectedUserId);
-      formData.append("message", message || "");
-      formData.append("image", selectedImage.file);
+    // Create optimistic message for instant display
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage = {
+      _id: tempId,
+      sender_id: "self", // Will be compared as !== selectedUserId
+      receiver_id: selectedUserId,
+      message: message,
+      image: selectedImage?.preview || null,
+      createdAt: new Date().toISOString(),
+      isRead: false,
+      isPending: true,
+    };
 
-      axios
-        .post(
+    // Add optimistic message immediately
+    setMessages((prev) => [...prev, optimisticMessage]);
+    const currentMessage = message;
+    const currentImage = selectedImage;
+    setMessage("");
+    setSending(true);
+
+    try {
+      if (currentImage) {
+        const formData = new FormData();
+        formData.append("receiver_id", selectedUserId);
+        formData.append("message", currentMessage || "");
+        formData.append("image", currentImage.file);
+
+        await axios.post(
           process.env.NEXT_PUBLIC_API_URL + "/message/send-image",
           formData,
           {
@@ -190,43 +261,38 @@ export default function ChatPage() {
               "Content-Type": "multipart/form-data",
               Authorization: "Bearer " + Cookies.get("chat-token"),
             },
-          }
-        )
-        .then((response) => {
-          getMsg();
-          setMessage("");
-          setSelectedImage(null);
-        })
-        .catch((error) => {});
-      return;
-    }
-
-    if (!message || message.trim() === "") {
-      return; // Don't send empty messages
-    }
-
-    const formData = new FormData();
-    formData.append("receiver_id", selectedUserId);
-
-    if (message && message.trim() !== "") {
-      formData.append("message", message);
-    }
-
-    axios
-      .post(
-        process.env.NEXT_PUBLIC_API_URL + "/message/send-message",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-            Authorization: "Bearer " + Cookies.get("chat-token"),
           },
-        }
-      )
-      .then((response) => {
-        setMessage("");
-      })
-      .catch((error) => {});
+        );
+        // Remove optimistic message and fetch real data
+        setMessages((prev) => prev.filter((m) => m._id !== tempId));
+        getMsg();
+        setSelectedImage(null);
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("receiver_id", selectedUserId);
+      formData.append("message", currentMessage);
+
+      // Use socket for text messages
+      if (socket) {
+        socket.emit("send-message", {
+          receiverId: selectedUserId,
+          message: currentMessage,
+          tempId: tempId,
+        });
+      }
+
+      // We don't need to manually update state here as we did optimistic update
+      // and will receive confirmation via 'message-sent' or 'receive-message'
+    } catch (error) {
+      console.error("Error sending message:", error);
+      // Remove optimistic message on error
+      setMessages((prev) => prev.filter((m) => m._id !== tempId));
+      setMessage(currentMessage); // Restore message
+    } finally {
+      setSending(false);
+    }
   };
 
   const onChange = (imageList) => {
@@ -242,131 +308,245 @@ export default function ChatPage() {
       setSelectedImage(null);
     }
   };
-  const dispatch = useDispatch();
+
+  // Message animation variants
+  const messageVariants = {
+    initial: { opacity: 0, y: 20, scale: 0.95 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, scale: 0.95 },
+  };
+
+  // Format time
+  const formatTime = (dateString) => {
+    return new Date(dateString).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  // Empty state when no user is selected
+  if (!selectedUserId) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="text-center space-y-4 p-8"
+        >
+          <motion.div
+            animate={{ y: [0, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/30"
+          >
+            <MessageSquare className="h-12 w-12 text-white" />
+          </motion.div>
+          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">
+            Welcome to BlinkChat
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 max-w-md">
+            Select a conversation from the sidebar to start chatting, or search
+            for someone new to connect with.
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       {/* Chat header */}
-      <div
+      <motion.div
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
         onClick={() => router.push(`/dashboard/profile?view=contact`)}
-        className="cursor-pointer flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
+        className="cursor-pointer flex items-center justify-between p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-700/50 shadow-sm"
       >
         <div className="flex items-center space-x-3">
-          <Avatar className="h-10 w-10 cursor-pointer">
-            <AvatarImage src={user?.avatar} />
-            <AvatarFallback className={"border border-gray-900"}>
-              {user?.name[0]}
-            </AvatarFallback>
-          </Avatar>
-          <div>
-            <h2 className="font-semibold">{user?.name}</h2>
-            <p
-              className={`text-xs text-gray-500 ${
-                user?.status === "online" ? "text-green-500" : "text-red-500"
-              }`}
-            >
-              {user?.status === "online" ? "online" : "offline"}
-            </p>
+          <div className="relative">
+            <Avatar className="h-11 w-11 ring-2 ring-green-500/20">
+              <AvatarImage src={user?.avatar} />
+              <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600 text-white font-semibold">
+                {user?.name?.[0]?.toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            {user?.status === "online" && (
+              <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full" />
+            )}
           </div>
-        </div>
-        <div className="">
-          <ArrowRight className="size-5" />
-        </div>
-      </div>
-
-      {/* Messages area */}
-      <div className="flex-1 p-4 overflow-y-auto no-scrollbar bg-[#e5ddd5] dark:bg-gray-700 bg-opacity-30">
-        <div id="msg-box" className="space-y-2">
-          {messages.length > 0 ? (
-            messages.map((msg, i) => (
-              <div
-                key={msg._id}
-                className={`flex ${
-                  msg.sender_id !== selectedUserId
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
-              >
-                <div
-                  className={`max-w-xs md:max-w-md lg:max-w-lg xl:max-w-xl rounded-lg px-4 py-2 ${
-                    msg.sender_id !== selectedUserId
-                      ? "bg-green-100 dark:bg-green-900 rounded-br-none"
-                      : "bg-white dark:bg-gray-800 rounded-tl-none"
+          <div>
+            <h2 className="font-semibold text-gray-900 dark:text-white">
+              {user?.name}
+            </h2>
+            <AnimatePresence mode="wait">
+              {isTyping ? (
+                <motion.p
+                  key="typing"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-xs text-green-500 flex items-center gap-1"
+                >
+                  <span className="flex gap-0.5">
+                    {[0, 1, 2].map((i) => (
+                      <motion.span
+                        key={i}
+                        animate={{ y: [0, -3, 0] }}
+                        transition={{
+                          repeat: Infinity,
+                          duration: 0.6,
+                          delay: i * 0.1,
+                        }}
+                        className="w-1.5 h-1.5 bg-green-500 rounded-full"
+                      />
+                    ))}
+                  </span>
+                  typing...
+                </motion.p>
+              ) : (
+                <motion.p
+                  key="status"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className={`text-xs ${
+                    user?.status === "online"
+                      ? "text-green-500"
+                      : "text-gray-500"
                   }`}
                 >
-                  {msg.image && (
-                    <img
-                      src={msg.image}
-                      onClick={() =>
-                        dispatch(
-                          openLightBox({
-                            open: true,
-                            image: {
-                              src: msg.image,
-                              alt: msg.image,
-                              title: msg.image,
-                              description: msg.image,
-                            },
-                            images: msg.image,
-                            index: i,
-                          })
-                        )
-                      }
-                      alt="Message Image"
-                      className="w-full h-auto rounded-lg cursor-pointer"
-                    />
-                  )}
-                  <p className="text-sm">{msg.message}</p>
-                  <div className="flex items-end gap-2 justify-end border-t border-gray-200 dark:border-gray-700">
-                    <p className="text-xs text-gray-500 text-right mt-1">
-                      {new Date(msg.createdAt).toLocaleString()}
-                    </p>
-                    {msg.sender_id !== selectedUserId && (
-                      <span>
-                        {msg.isRead ? (
-                          <div className="flex justify-end items-center">
-                            {[1, 2].map((item) => (
-                              <Check
-                                key={item}
-                                size={12}
-                                className="h-3 w-3 text-green-500"
-                                aria-hidden="true"
-                              />
-                            ))}
-                          </div>
-                        ) : (
-                          <Check
-                            size={12}
-                            className="h-3 w-3 text-gray-500"
-                            aria-hidden="true"
-                          />
-                        )}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="w-full h-full flex justify-center items-center">
-              No messages
-            </p>
-          )}
+                  {user?.status === "online" ? "Online" : "Offline"}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
+        <ArrowRight className="h-5 w-5 text-gray-400" />
+      </motion.div>
+
+      {/* Messages area */}
+      <div className="flex-1 p-4 overflow-y-auto no-scrollbar">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-green-500" />
+          </div>
+        ) : (
+          <div className="space-y-3 max-w-3xl mx-auto">
+            <AnimatePresence initial={false}>
+              {messages.length > 0 ? (
+                messages.map((msg, i) => (
+                  <motion.div
+                    key={msg._id}
+                    variants={messageVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    transition={{ duration: 0.2, delay: i * 0.02 }}
+                    className={`flex ${
+                      msg.sender_id !== selectedUserId
+                        ? "justify-end"
+                        : "justify-start"
+                    }`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-2xl px-4 py-2.5 shadow-sm ${
+                        msg.sender_id !== selectedUserId
+                          ? "bg-gradient-to-br from-green-500 to-green-600 text-white rounded-br-md"
+                          : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-md shadow-md"
+                      }`}
+                    >
+                      {msg.image && (
+                        <motion.img
+                          whileHover={{ scale: 1.02 }}
+                          src={msg.image}
+                          onClick={() =>
+                            dispatch(
+                              openLightBox({
+                                open: true,
+                                image: {
+                                  src: msg.image,
+                                  alt: msg.image,
+                                  title: msg.image,
+                                  description: msg.image,
+                                },
+                                images: msg.image,
+                                index: i,
+                              }),
+                            )
+                          }
+                          alt="Message Image"
+                          className="max-w-[200px] max-h-[200px] w-auto h-auto rounded-xl cursor-pointer mb-2 object-cover"
+                        />
+                      )}
+                      {msg.message && (
+                        <p className="text-sm leading-relaxed">{msg.message}</p>
+                      )}
+                      <div
+                        className={`flex items-center gap-1.5 justify-end mt-1 ${
+                          msg.sender_id !== selectedUserId
+                            ? "text-white/70"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        <span className="text-[10px]">
+                          {formatTime(msg.createdAt)}
+                        </span>
+                        {msg.sender_id !== selectedUserId && (
+                          <span className="flex">
+                            {msg.isRead ? (
+                              <span className="flex -space-x-1">
+                                <Check className="h-3 w-3 text-blue-300" />
+                                <Check className="h-3 w-3 text-blue-300" />
+                              </span>
+                            ) : (
+                              <Check className="h-3 w-3" />
+                            )}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex flex-col items-center justify-center h-[50vh] text-gray-400"
+                >
+                  <MessageSquare className="h-16 w-16 mb-4 opacity-30" />
+                  <p className="font-medium">No messages yet</p>
+                  <p className="text-sm">
+                    Send a message to start the conversation
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div ref={messagesEndRef} />
+          </div>
+        )}
       </div>
 
       {/* Message input */}
-      <div className="p-3 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
-        {selectedImage && (
-          <div className="relative mb-2 p-2 bg-white dark:bg-gray-700 rounded-lg">
-            <div className="flex flex-wrap gap-2">
-              <div className="relative group">
-                <div className="w-20 h-20 relative">
+      <motion.div
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-t border-gray-200/50 dark:border-gray-700/50"
+      >
+        <AnimatePresence>
+          {selectedImage && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3"
+            >
+              <div className="relative inline-block">
+                <div className="w-24 h-24 relative rounded-xl overflow-hidden ring-2 ring-green-500">
                   <Image
                     src={selectedImage.preview}
                     alt="uploaded"
                     fill
-                    className="object-cover rounded-md"
+                    className="object-cover"
                   />
                 </div>
                 <button
@@ -375,39 +555,47 @@ export default function ChatPage() {
                     URL.revokeObjectURL(selectedImage.preview);
                     setSelectedImage(null);
                   }}
-                  className="absolute -top-2 -right-2 bg-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 rounded-full p-1.5 shadow-lg transition-colors"
                 >
                   <X className="h-3 w-3 text-white" />
                 </button>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <form
           onSubmit={handleSendMessage}
-          className="flex items-center space-x-2"
+          className="flex items-center gap-2 max-w-3xl mx-auto"
         >
-          <Button
-            onClick={() => setShowPicker(!showPicker)}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="relative"
-          >
-            <Smile className="h-5 w-5" />
-            {showPicker && (
-              <div className="absolute bottom-full left-0 mb-2 z-50">
-                <div className="transform origin-bottom scale-75 sm:scale-90 md:scale-100">
+          <div className="relative">
+            <Button
+              onClick={() => setShowPicker(!showPicker)}
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <Smile className="h-5 w-5 text-gray-500" />
+            </Button>
+            <AnimatePresence>
+              {showPicker && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                  className="absolute bottom-full left-0 mb-2 z-50"
+                >
                   <EmojiPicker
                     onEmojiClick={(emoji) => {
                       setMessage((prev) => prev + emoji.emoji);
                     }}
+                    theme="auto"
                   />
-                </div>
-              </div>
-            )}
-          </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           <ImageUploading
             disabled={!!selectedImage}
@@ -418,59 +606,50 @@ export default function ChatPage() {
             dataURLKey="data_url"
             acceptType={["jpg", "jpeg", "png", "gif"]}
           >
-            {({ onImageUpload, onImageRemove, dragProps }) => (
-              <div className="flex items-center space-x-2">
-                <Button
-                  disabled={!!selectedImage}
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={onImageUpload}
-                  {...dragProps}
-                >
-                  <ImageIcon className="h-5 w-5" />
-                </Button>
-                {/* {selectedImage && (
-                  <div className="relative">
-                    <Image
-                      src={selectedImage.preview}
-                      alt="Preview"
-                      width={40}
-                      height={40}
-                      className="rounded"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        URL.revokeObjectURL(selectedImage.preview);
-                        setSelectedImage(null);
-                      }}
-                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )} */}
-              </div>
+            {({ onImageUpload, dragProps }) => (
+              <Button
+                disabled={!!selectedImage}
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onImageUpload}
+                className="rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                {...dragProps}
+              >
+                <ImageIcon className="h-5 w-5 text-gray-500" />
+              </Button>
             )}
           </ImageUploading>
 
-          <Input
-            type="text"
-            placeholder="Type a message"
-            className="flex-1"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <Button
-            type="submit"
-            size="icon"
-            className="bg-green-500 hover:bg-green-600 text-white"
-          >
-            <Send className="h-5 w-5" />
-          </Button>
+          <div className="flex-1 relative">
+            <Input
+              type="text"
+              placeholder="Type a message..."
+              className="w-full rounded-full bg-gray-100 dark:bg-gray-700 border-0 pr-4 pl-4 py-6 focus-visible:ring-green-500"
+              value={message}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                handleTyping();
+              }}
+            />
+          </div>
+
+          <motion.div whileTap={{ scale: 0.95 }}>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={sending || (!message.trim() && !selectedImage)}
+              className="rounded-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white shadow-lg shadow-green-500/30 h-12 w-12"
+            >
+              {sending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </motion.div>
         </form>
-      </div>
+      </motion.div>
     </div>
   );
 }

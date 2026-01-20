@@ -1,6 +1,6 @@
 const { hashPassword, comparePassword } = require("../lib/bycrpt");
 const User = require("../models/user");
-const { genrateToken, generateOtpToken } = require("../lib/jwt");
+const { genrateToken, generateOtpToken, refreshToken } = require("../lib/jwt");
 const cloudinary = require("../lib/cloudinary");
 const fs = require("fs");
 const nodemailer = require("nodemailer");
@@ -58,7 +58,7 @@ const login = async (req, res) => {
 
     const isPasswordMatched = await comparePassword(
       password,
-      userData.password
+      userData.password,
     );
 
     if (!isPasswordMatched) {
@@ -180,9 +180,8 @@ const selectedUser = async (req, res) => {
   }
 
   try {
-    const selectedUser = await User.findById(selectedUserId).select(
-      "-password"
-    );
+    const selectedUser =
+      await User.findById(selectedUserId).select("-password");
 
     if (!selectedUser) {
       return res.status(400).json({ message: "User not found" });
@@ -260,7 +259,6 @@ const resetPassword = async (req, res) => {
   const { email, otp, newPassword, token } = req.body;
 
   try {
-
     // Hash new password
     const hashedPassword = await bycrpt.hash(newPassword, 10);
 
@@ -282,6 +280,44 @@ const resetPassword = async (req, res) => {
   }
 };
 
+/**
+ * Refresh JWT token before it expires
+ */
+const refreshTokenHandler = async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({
+      status: "error",
+      message: "Token is required",
+    });
+  }
+
+  try {
+    const result = refreshToken(token);
+
+    if (!result.success) {
+      return res.status(401).json({
+        status: "error",
+        message: result.error,
+      });
+    }
+
+    return res.status(200).json({
+      status: "success",
+      message: "Token refreshed successfully",
+      token: result.token,
+      expiresAt: result.expiresAt,
+    });
+  } catch (error) {
+    console.error("Token refresh error:", error);
+    return res.status(500).json({
+      status: "error",
+      message: "Internal server error",
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -292,4 +328,5 @@ module.exports = {
   forgotPassword,
   verifyOtp,
   resetPassword,
+  refreshTokenHandler,
 };

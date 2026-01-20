@@ -19,8 +19,21 @@ const UserSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: true,
       minlength: 6,
+      required: function () {
+        // Password is required only for local auth users
+        return this.authProvider === "local" || !this.authProvider;
+      },
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows null values while maintaining uniqueness
+    },
+    authProvider: {
+      type: String,
+      enum: ["local", "google", "both"],
+      default: "local",
     },
     mobile: {
       type: String,
@@ -36,7 +49,7 @@ const UserSchema = new mongoose.Schema(
       default: "",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("User", UserSchema);

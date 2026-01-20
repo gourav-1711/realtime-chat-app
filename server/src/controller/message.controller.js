@@ -91,7 +91,7 @@ const markAsRead = async (req, res) => {
     const message = await Message.findByIdAndUpdate(
       messageId,
       { isRead: true },
-      { new: true } // return updated document
+      { new: true }, // return updated document
     );
 
     if (!message) {
@@ -125,7 +125,7 @@ const markAllAsRead = async (req, res) => {
         receiver_id: userId, // to the logged-in user
         isRead: false, // only unread messages
       },
-      { isRead: true } // mark as read
+      { isRead: true }, // mark as read
     );
 
     res.status(200).json({
@@ -169,25 +169,52 @@ const getConversationWithOther = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    const message = await Message.find({
+    // Get all messages involving the current user
+    const messages = await Message.find({
       $or: [{ sender_id: userId }, { receiver_id: userId }],
     })
-      .populate("sender_id receiver_id", "name email")
-      .sort({ createdAt: 1 });
+      .populate("sender_id receiver_id", "name email avatar status description")
+      .sort({ createdAt: -1 }); // Sort by newest first
 
-    const chatUsers = new Set();
+    // Map to store unique users with their conversation data
+    const chatUsersMap = new Map();
 
-    message.forEach((msg) => {
-      if (msg.sender_id._id.toString() !== userId.toString()) {
-        chatUsers.add(JSON.stringify(msg.sender_id));
+    messages.forEach((msg) => {
+      // Determine the other user in this conversation
+      const otherUser =
+        msg.sender_id._id.toString() === userId.toString()
+          ? msg.receiver_id
+          : msg.sender_id;
+
+      const otherUserId = otherUser._id.toString();
+
+      // If we haven't seen this user yet, store their data
+      if (!chatUsersMap.has(otherUserId)) {
+        chatUsersMap.set(otherUserId, {
+          _id: otherUser._id,
+          name: otherUser.name,
+          email: otherUser.email,
+          avatar: otherUser.avatar,
+          status: otherUser.status,
+          description: otherUser.description,
+          lastMessage: msg.image ? "📷 Image" : msg.message,
+          lastMessageTime: msg.createdAt,
+          unreadCount: 0,
+        });
       }
-      if (msg.receiver_id._id.toString() !== userId.toString()) {
-        chatUsers.add(JSON.stringify(msg.receiver_id));
+
+      // Count unread messages (messages sent TO the current user that are unread)
+      if (msg.receiver_id._id.toString() === userId.toString() && !msg.isRead) {
+        const userData = chatUsersMap.get(otherUserId);
+        userData.unreadCount++;
+        chatUsersMap.set(otherUserId, userData);
       }
     });
 
-    // Convert back to objects
-    const uniqueUsers = Array.from(chatUsers).map((user) => JSON.parse(user));
+    // Convert map to array and sort by last message time
+    const uniqueUsers = Array.from(chatUsersMap.values()).sort(
+      (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime),
+    );
 
     return res.status(200).json({
       status: "success",
