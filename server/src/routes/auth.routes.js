@@ -16,7 +16,7 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: "http://localhost:3000?error=auth_failed",
+    failureRedirect: `${process.env.FRONTEND_URL}?error=auth_failed`,
   }),
   (req, res) => {
     try {
@@ -25,7 +25,7 @@ router.get(
 
       // Redirect to frontend with token
       res.redirect(
-        `http://localhost:3000/api/auth/google/callback?token=${token}`,
+        `${process.env.FRONTEND_URL}/api/auth/google/callback?token=${token}`,
       );
     } catch (error) {
       console.error("OAuth callback error:", error);

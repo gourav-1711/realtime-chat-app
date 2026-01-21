@@ -10,6 +10,7 @@ const {
   markAllAsRead,
   getAllMsg,
   getConversationWithOther,
+  deleteConversation,
 } = require("../controller/message.controller");
 
 router.post("/send-message", protect, upload.none(), sendMessage);
@@ -19,13 +20,14 @@ router.post(
   "/mark-all-as-read/:withUserId",
   protect,
   upload.none(),
-  markAllAsRead
+  markAllAsRead,
 );
 router.post("/get-all-msg", protect, upload.none(), getAllMsg);
 router.post(
   "/get-conversation-with-other",
   protect,
   upload.none(),
-  getConversationWithOther
+  getConversationWithOther,
 );
+router.post("/delete-conversation", protect, upload.none(), deleteConversation);
 module.exports = router;

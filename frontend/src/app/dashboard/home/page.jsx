@@ -10,6 +10,7 @@ import {
   ArrowRight,
   MessageSquare,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import Image from "next/image";
 import ImageUploading from "react-images-uploading";
@@ -17,19 +18,39 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDispatch, useSelector } from "react-redux";
-import axios from "axios";
-import Cookies from "js-cookie";
 import EmojiPicker from "emoji-picker-react";
 import { useRouter } from "next/navigation";
 import { openLightBox } from "@/app/(redux)/features/lightBox";
 import { useSocket } from "@/components/socket-context";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  fetchSelectedUser,
+  fetchAllMessages,
+  markAllMessagesAsRead,
+  deleteConversation,
+} from "@/lib/api";
+import EmptyChatBox from "@/components/EmptyChatBox";
+import axios from "axios";
+import Cookies from "js-cookie";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function ChatPage() {
   const router = useRouter();
   const { socket, isConnected } = useSocket();
   const messagesEndRef = useRef(null);
+  const dispatch = useDispatch();
+  const typingTimeoutRef = useRef(null);
 
+  // State
   const [showPicker, setShowPicker] = useState(false);
   const selectedUserId = useSelector((state) => state.chatWith.chatWith);
   const [messages, setMessages] = useState([]);
@@ -39,198 +60,145 @@ export default function ChatPage() {
   const [isTyping, setIsTyping] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const dispatch = useDispatch();
-  const typingTimeoutRef = useRef(null);
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false);
 
-  // Socket event handlers
-  useEffect(() => {
-    if (!socket) return;
+  // ==================== API CALLS ====================
 
-    const handleUserStatus = ({ userId, status }) => {
+  const getUser = useCallback(async () => {
+    if (!selectedUserId) return;
+
+    try {
+      const userData = await fetchSelectedUser(selectedUserId);
+      setUser(userData);
+    } catch (error) {
+      setUser(null);
+    }
+  }, [selectedUserId]);
+
+  const getMsg = useCallback(async () => {
+    if (!selectedUserId) return;
+    setLoading(true);
+
+    try {
+      const messagesData = await fetchAllMessages(selectedUserId);
+      setMessages(messagesData);
+    } catch (error) {
+      console.error("Error loading messages:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedUserId]);
+
+  const setAsRead = useCallback(() => {
+    if (!selectedUserId) return;
+    markAllMessagesAsRead(selectedUserId);
+  }, [selectedUserId]);
+
+  const handleDeleteChat = useCallback(async () => {
+    if (!selectedUserId) return;
+
+    try {
+      await deleteConversation(selectedUserId);
+      setMessages([]);
+      setShowDeleteAlert(false);
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+    }
+  }, [selectedUserId]);
+
+  // ==================== SOCKET EVENT HANDLERS ====================
+
+  const handleUserStatus = useCallback(
+    ({ userId, status }) => {
       if (userId === selectedUserId) {
         setUser((prev) => (prev ? { ...prev, status } : null));
       }
-    };
+    },
+    [selectedUserId],
+  );
 
-    const handleReceiveMessage = (newMessage) => {
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
-    };
+  const handleReceiveMessage = useCallback((newMessage) => {
+    setMessages((prevMessages) => [...prevMessages, newMessage]);
+  }, []);
 
-    const handleUpdateMessage = ({ messageId, isRead }) => {
-      setMessages((prevMsgs) =>
-        prevMsgs.map((msg) =>
-          msg._id === messageId ? { ...msg, isRead } : msg,
-        ),
+  const handleUpdateMessage = useCallback(({ messageId, isRead }) => {
+    console.log("[READ UPDATE] Received update-message event:", {
+      messageId,
+      isRead,
+    });
+    setMessages((prevMsgs) => {
+      console.log("[READ UPDATE] Messages in state:", prevMsgs.length);
+      const foundIndex = prevMsgs.findIndex((msg) => msg._id === messageId);
+      console.log("[READ UPDATE] Message found at index:", foundIndex);
+
+      if (foundIndex === -1) {
+        console.log(
+          "[READ UPDATE] Message NOT found! All IDs:",
+          prevMsgs.map((m) => m._id),
+        );
+        return prevMsgs;
+      }
+
+      const updated = prevMsgs.map((msg) =>
+        msg._id === messageId ? { ...msg, isRead } : msg,
       );
-    };
 
-    const handleTyping = ({ userId, typing }) => {
+      console.log("[READ UPDATE] Updated message:", updated[foundIndex]);
+      return updated;
+    });
+  }, []);
+
+  const handleUserTyping = useCallback(
+    ({ userId, typing }) => {
       if (userId === selectedUserId) {
         setIsTyping(typing);
       }
-    };
+    },
+    [selectedUserId],
+  );
 
-    socket.on("user-status", handleUserStatus);
-    socket.on("receive-message", handleReceiveMessage);
-    socket.on("update-message", handleUpdateMessage);
-    socket.on("user-typing", handleTyping);
-
-    return () => {
-      socket.off("user-typing", handleTyping);
-      socket.off("message-sent", handleMessageSent);
-      socket.off("message-error", handleMessageError);
-    };
-  }, [socket, selectedUserId]);
-
-  // Handle message sent confirmation
   const handleMessageSent = useCallback((sentMessage) => {
+    console.log("[MESSAGE SENT] Received confirmation:", sentMessage);
+
+    // Replace the optimistic temp message with the real confirmed message
     setMessages((prev) =>
       prev.map((msg) =>
-        msg.isPending && msg.message === sentMessage.message
+        msg._id === sentMessage.tempId
           ? { ...sentMessage, isPending: false }
           : msg,
       ),
     );
   }, []);
 
-  // Handle message send error
   const handleMessageError = useCallback((error) => {
     console.error("Message send error:", error);
-    // You might want to show a toast here
   }, []);
 
-  useEffect(() => {
-    if (!socket) return;
-    socket.on("message-sent", handleMessageSent);
-    socket.on("message-error", handleMessageError);
-
-    return () => {
-      socket.off("message-sent", handleMessageSent);
-      socket.off("message-error", handleMessageError);
-    };
-  }, [socket, handleMessageSent, handleMessageError]);
-
-  // Mark last message as read
-  useEffect(() => {
-    const lastIndex = messages.length - 1;
-    const lastMsgObj = messages[lastIndex];
-    if (!lastMsgObj || lastMsgObj.isRead) {
-      return;
-    }
-    if (lastMsgObj.sender_id === selectedUserId) {
-      // Use socket to mark as read
-      if (socket) {
-        socket.emit("mark-as-read", {
-          messageId: lastMsgObj._id,
-          senderId: lastMsgObj.sender_id,
-        });
-      }
-    }
-  }, [messages, selectedUserId, socket]);
-
-  // Fetch user and messages
-  const getUser = useCallback(() => {
-    if (!selectedUserId) return;
-
-    axios
-      .post(
-        process.env.NEXT_PUBLIC_API_URL + "/user/selected-user",
-        { selectedUserId },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + Cookies.get("chat-token"),
-          },
-        },
-      )
-      .then((response) => {
-        setUser(response.data.data);
-      })
-      .catch((error) => {
-        setUser(null);
-      });
-  }, [selectedUserId]);
-
-  const getMsg = useCallback(() => {
-    if (!selectedUserId) return;
-    setLoading(true);
-
-    axios
-      .post(
-        process.env.NEXT_PUBLIC_API_URL + "/message/get-all-msg",
-        { withUserId: selectedUserId },
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer " + Cookies.get("chat-token"),
-          },
-        },
-      )
-      .then((response) => {
-        setMessages(response.data.data);
-      })
-      .catch((error) => {})
-      .finally(() => {
-        setLoading(false);
-      });
-  }, [selectedUserId]);
-
-  const setAsRead = useCallback(() => {
-    if (!selectedUserId) return;
-
-    axios.post(
-      process.env.NEXT_PUBLIC_API_URL +
-        "/message/mark-all-as-read/" +
-        selectedUserId,
-      { withUserId: selectedUserId },
-      {
-        headers: {
-          Authorization: "Bearer " + Cookies.get("chat-token"),
-        },
-      },
-    );
-  }, [selectedUserId]);
-
-  useEffect(() => {
-    if (selectedUserId) {
-      getUser();
-      getMsg();
-      setAsRead();
-    }
-  }, [selectedUserId, getUser, getMsg, setAsRead]);
-
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // Handle typing indicator with debounce
   const handleTyping = useCallback(() => {
     if (socket && selectedUserId) {
       socket.emit("typing", { receiverId: selectedUserId, typing: true });
 
-      // Clear existing timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
 
-      // Set new timeout
       typingTimeoutRef.current = setTimeout(() => {
         socket.emit("typing", { receiverId: selectedUserId, typing: false });
       }, 2000);
     }
   }, [socket, selectedUserId]);
 
+  // ==================== UTILITY FUNCTIONS ====================
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (sending) return;
     if (!message.trim() && !selectedImage) return;
 
-    // Create optimistic message for instant display
     const tempId = `temp-${Date.now()}`;
     const optimisticMessage = {
       _id: tempId,
-      sender_id: "self", // Will be compared as !== selectedUserId
+      sender_id: "self",
       receiver_id: selectedUserId,
       message: message,
       image: selectedImage?.preview || null,
@@ -239,7 +207,6 @@ export default function ChatPage() {
       isPending: true,
     };
 
-    // Add optimistic message immediately
     setMessages((prev) => [...prev, optimisticMessage]);
     const currentMessage = message;
     const currentImage = selectedImage;
@@ -263,18 +230,12 @@ export default function ChatPage() {
             },
           },
         );
-        // Remove optimistic message and fetch real data
         setMessages((prev) => prev.filter((m) => m._id !== tempId));
         getMsg();
         setSelectedImage(null);
         return;
       }
 
-      const formData = new FormData();
-      formData.append("receiver_id", selectedUserId);
-      formData.append("message", currentMessage);
-
-      // Use socket for text messages
       if (socket) {
         socket.emit("send-message", {
           receiverId: selectedUserId,
@@ -282,14 +243,10 @@ export default function ChatPage() {
           tempId: tempId,
         });
       }
-
-      // We don't need to manually update state here as we did optimistic update
-      // and will receive confirmation via 'message-sent' or 'receive-message'
     } catch (error) {
       console.error("Error sending message:", error);
-      // Remove optimistic message on error
       setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      setMessage(currentMessage); // Restore message
+      setMessage(currentMessage);
     } finally {
       setSending(false);
     }
@@ -309,14 +266,6 @@ export default function ChatPage() {
     }
   };
 
-  // Message animation variants
-  const messageVariants = {
-    initial: { opacity: 0, y: 20, scale: 0.95 },
-    animate: { opacity: 1, y: 0, scale: 1 },
-    exit: { opacity: 0, scale: 0.95 },
-  };
-
-  // Format time
   const formatTime = (dateString) => {
     return new Date(dateString).toLocaleTimeString([], {
       hour: "2-digit",
@@ -324,33 +273,86 @@ export default function ChatPage() {
     });
   };
 
-  // Empty state when no user is selected
+  const messageVariants = {
+    initial: { opacity: 0, y: 20, scale: 0.95 },
+    animate: { opacity: 1, y: 0, scale: 1 },
+    exit: { opacity: 0, scale: 0.95 },
+  };
+
+  // ==================== EFFECTS ====================
+
+  // Socket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("user-status", handleUserStatus);
+    socket.on("receive-message", handleReceiveMessage);
+    socket.on("update-message", handleUpdateMessage);
+    socket.on("user-typing", handleUserTyping);
+    socket.on("message-sent", handleMessageSent);
+    socket.on("message-error", handleMessageError);
+
+    return () => {
+      socket.off("user-status", handleUserStatus);
+      socket.off("receive-message", handleReceiveMessage);
+      socket.off("update-message", handleUpdateMessage);
+      socket.off("user-typing", handleUserTyping);
+      socket.off("message-sent", handleMessageSent);
+      socket.off("message-error", handleMessageError);
+    };
+  }, [
+    socket,
+    handleUserStatus,
+    handleReceiveMessage,
+    handleUpdateMessage,
+    handleUserTyping,
+    handleMessageSent,
+    handleMessageError,
+  ]);
+
+  // Mark last message as read
+  useEffect(() => {
+    const lastIndex = messages.length - 1;
+    const lastMsgObj = messages[lastIndex];
+    if (!lastMsgObj || lastMsgObj.isRead) return;
+
+    if (lastMsgObj.sender_id === selectedUserId && socket) {
+      console.log("[READ EMIT] Marking message as read:", {
+        messageId: lastMsgObj._id,
+        senderId: lastMsgObj.sender_id,
+      });
+
+      socket.emit("mark-as-read", {
+        messageId: lastMsgObj._id,
+        senderId: lastMsgObj.sender_id,
+      });
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === lastMsgObj._id ? { ...msg, isRead: true } : msg,
+        ),
+      );
+    }
+  }, [messages, selectedUserId, socket]);
+
+  // Fetch data when user is selected
+  useEffect(() => {
+    if (selectedUserId) {
+      getUser();
+      getMsg();
+      setAsRead();
+    }
+  }, [selectedUserId, getUser, getMsg, setAsRead]);
+
+  // Auto-scroll to latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // ==================== RENDER ====================
+
   if (!selectedUserId) {
-    return (
-      <div className="flex flex-col h-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="text-center space-y-4 p-8"
-        >
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/30"
-          >
-            <MessageSquare className="h-12 w-12 text-white" />
-          </motion.div>
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-gray-200">
-            Welcome to BlinkChat
-          </h2>
-          <p className="text-gray-500 dark:text-gray-400 max-w-md">
-            Select a conversation from the sidebar to start chatting, or search
-            for someone new to connect with.
-          </p>
-        </motion.div>
-      </div>
-    );
+    return <EmptyChatBox />;
   }
 
   return (
@@ -359,10 +361,12 @@ export default function ChatPage() {
       <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        onClick={() => router.push(`/dashboard/profile?view=contact`)}
-        className="cursor-pointer flex items-center justify-between p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-700/50 shadow-sm"
+        className="flex items-center justify-between p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200/50 dark:border-gray-700/50 shadow-sm"
       >
-        <div className="flex items-center space-x-3">
+        <div
+          onClick={() => router.push(`/dashboard/profile?view=contact`)}
+          className="cursor-pointer flex items-center space-x-3"
+        >
           <div className="relative">
             <Avatar className="h-11 w-11 ring-2 ring-green-500/20">
               <AvatarImage src={user?.avatar} />
@@ -421,7 +425,14 @@ export default function ChatPage() {
             </AnimatePresence>
           </div>
         </div>
-        <ArrowRight className="h-5 w-5 text-gray-400" />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setShowDeleteAlert(true)}
+          className="rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-500 hover:text-red-500"
+        >
+          <Trash2 className="h-5 w-5" />
+        </Button>
       </motion.div>
 
       {/* Messages area */}
@@ -441,7 +452,7 @@ export default function ChatPage() {
                     initial="initial"
                     animate="animate"
                     exit="exit"
-                    transition={{ duration: 0.2, delay: i * 0.02 }}
+                    transition={{ duration: 0.1, delay: 0 }}
                     className={`flex ${
                       msg.sender_id !== selectedUserId
                         ? "justify-end"
@@ -456,27 +467,32 @@ export default function ChatPage() {
                       }`}
                     >
                       {msg.image && (
-                        <motion.img
-                          whileHover={{ scale: 1.02 }}
-                          src={msg.image}
-                          onClick={() =>
-                            dispatch(
-                              openLightBox({
-                                open: true,
-                                image: {
-                                  src: msg.image,
-                                  alt: msg.image,
-                                  title: msg.image,
-                                  description: msg.image,
-                                },
-                                images: msg.image,
-                                index: i,
-                              }),
-                            )
-                          }
-                          alt="Message Image"
-                          className="max-w-[200px] max-h-[200px] w-auto h-auto rounded-xl cursor-pointer mb-2 object-cover"
-                        />
+                        <div className="relative w-[200px] h-[200px] rounded-xl overflow-hidden mb-2">
+                          <Image
+                            src={msg.image}
+                            alt="Message attachment"
+                            fill
+                            className="object-cover cursor-pointer hover:scale-105 transition-transform"
+                            onClick={() =>
+                              dispatch(
+                                openLightBox({
+                                  open: true,
+                                  image: {
+                                    src: msg.image,
+                                    alt: msg.image,
+                                    title: msg.image,
+                                    description: msg.image,
+                                  },
+                                  images: msg.image,
+                                  index: i,
+                                }),
+                              )
+                            }
+                            onError={(e) => {
+                              e.target.src = "/hero-image.png";
+                            }}
+                          />
+                        </div>
                       )}
                       {msg.message && (
                         <p className="text-sm leading-relaxed">{msg.message}</p>
@@ -650,6 +666,30 @@ export default function ChatPage() {
           </motion.div>
         </form>
       </motion.div>
+
+      {/* Delete Conversation Alert */}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all messages between you and{" "}
+              <span className="font-semibold">{user?.name}</span>. This action
+              cannot be undone and will also delete the chat history from their
+              side.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteChat}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

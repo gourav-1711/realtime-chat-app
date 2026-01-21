@@ -229,6 +229,35 @@ const getConversationWithOther = async (req, res) => {
   }
 };
 
+const deleteConversation = async (req, res) => {
+  const userId = req.user.id;
+  const { withUserId } = req.body;
+
+  if (!withUserId) {
+    return res.status(400).json({ message: "User ID is required" });
+  }
+
+  try {
+    const result = await Message.deleteMany({
+      $or: [
+        { sender_id: userId, receiver_id: withUserId },
+        { sender_id: withUserId, receiver_id: userId },
+      ],
+    });
+
+    return res.status(200).json({
+      status: "success",
+      message: `Deleted ${result.deletedCount} messages`,
+      data: { deletedCount: result.deletedCount },
+    });
+  } catch (error) {
+    console.error(error);
+    return res
+      .status(500)
+      .json({ status: "error", message: "Internal server error" });
+  }
+};
+
 module.exports = {
   sendMessage,
   sendImage,
@@ -236,4 +265,5 @@ module.exports = {
   markAllAsRead,
   getAllMsg,
   getConversationWithOther,
+  deleteConversation,
 };

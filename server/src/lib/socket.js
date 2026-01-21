@@ -16,6 +16,8 @@ function initIO(server) {
   });
 
   io.on("connection", async (socket) => {
+    console.log("[SOCKET] New connection:", socket.id);
+
     socket.on("add-user", async (userId) => {
       if (!userId) {
         return;
@@ -28,6 +30,16 @@ function initIO(server) {
       // Store user's socket id and their decoded id
       socket.userId = decodedId;
       onlineUsers.set(decodedId, socket.id);
+      console.log("[SOCKET] User added:", {
+        userId: decodedId,
+        socketId: socket.id,
+        totalOnline: onlineUsers.size,
+      });
+      console.log(
+        "[SOCKET] Online users map:",
+        Array.from(onlineUsers.entries()),
+      );
+
       io.emit("online-users", Array.from(onlineUsers.keys()));
 
       await User.findByIdAndUpdate(decodedId, { status: "online" });
@@ -96,11 +108,23 @@ function initIO(server) {
       const { messageId, senderId } = data;
       if (!messageId) return;
 
+      console.log("[SERVER] mark-as-read received:", {
+        messageId,
+        senderId,
+        receiverId: socket.userId,
+      });
+
       try {
         await Message.findByIdAndUpdate(messageId, { isRead: true });
 
         // Notify sender that message was read
         const senderSocketId = onlineUsers.get(senderId);
+        console.log("[SERVER] Notifying sender:", {
+          senderId,
+          senderSocketId,
+          messageId,
+          allOnlineUsers: Array.from(onlineUsers.keys()),
+        });
         if (senderSocketId) {
           io.to(senderSocketId).emit("update-message", {
             messageId,
