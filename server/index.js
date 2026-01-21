@@ -10,7 +10,15 @@ const session = require("express-session");
 const passport = require("./src/lib/passport");
 const compression = require("compression");
 const helmet = require("helmet");
-connect();
+const User = require("./src/models/user");
+connect().then(async () => {
+  try {
+    await User.updateMany({}, { status: "offline" });
+    console.log("All users status reset to offline");
+  } catch (error) {
+    console.error("Error resetting user status:", error);
+  }
+});
 
 const http = require("http");
 
