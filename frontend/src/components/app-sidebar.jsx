@@ -4,12 +4,8 @@ import * as React from "react";
 import {
   Search,
   Menu,
-  MoreVertical,
   MessageSquare,
   Users,
-  Phone,
-  Video,
-  Mail,
   X,
   User,
   Settings,
@@ -18,12 +14,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import Cookies from "js-cookie";

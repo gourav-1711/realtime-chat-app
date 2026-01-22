@@ -1,5 +1,7 @@
 import React from 'react'
 import { motion } from "framer-motion";
+import { MessageSquare } from "lucide-react";
+
 export default function EmptyChatBox() {
   return (
     <div className="flex flex-col h-full items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900">
