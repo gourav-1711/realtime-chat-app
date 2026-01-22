@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { NextRequest } from "next/server";
 
-export async function middleware(request) {
+export async function proxy(request) {
   const token = request.cookies.get("chat-token");
 
   const path = request.nextUrl.pathname;

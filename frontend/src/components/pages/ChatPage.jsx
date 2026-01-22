@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Loader2,
   Trash2,
+  MessageSquareCode,
 } from "lucide-react";
 import Image from "next/image";
 import ImageUploading from "react-images-uploading";
@@ -528,7 +529,7 @@ export default function ChatPage() {
                   animate={{ opacity: 1 }}
                   className="flex flex-col items-center justify-center h-[50vh] text-gray-400"
                 >
-                  <MessageSquare className="h-16 w-16 mb-4 opacity-30" />
+                  <MessageSquareCode className="h-16 w-16 mb-4 opacity-30" />
                   <p className="font-medium">No messages yet</p>
                   <p className="text-sm">
                     Send a message to start the conversation
