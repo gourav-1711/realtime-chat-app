@@ -1,5 +1,6 @@
 import { ProfilePageContent } from "@/components/pages/ProfilePage";
 import { Suspense } from "react";
+import { Loader2 } from "lucide-react";
 
 export default function ProfilePage() {
   return (

@@ -7,7 +7,6 @@ import {
   Image as ImageIcon,
   X,
   Check,
-  MessageSquare,
   Loader2,
   Trash2,
   MessageSquareCode,
