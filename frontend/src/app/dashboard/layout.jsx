@@ -7,7 +7,7 @@ import React from "react";
 
 export const metadata = {
   title: "BlinkChat",
-  description: "A chat app built with Next.js and Tailwind CSS",
+  description: "A Realtime chat app built with Next.js and Tailwind CSS",
 };
 
 export default function Layout({ children }) {

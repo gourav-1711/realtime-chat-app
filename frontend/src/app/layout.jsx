@@ -17,17 +17,6 @@ export const metadata = {
   description:
     "A modern real-time chat application - Connect with anyone, anywhere",
   manifest: "/manifest.json",
-  themeColor: "#22c55e",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 1,
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "BlinkChat",
-  },
 };
 
 export default function RootLayout({ children }) {
