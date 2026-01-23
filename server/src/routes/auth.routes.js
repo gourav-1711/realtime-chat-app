@@ -29,7 +29,9 @@ router.get(
       );
     } catch (error) {
       console.error("OAuth callback error:", error);
-      res.redirect("http://localhost:3000?error=auth_failed");
+      res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:3000"}?error=auth_failed`,
+      );
     }
   },
 );

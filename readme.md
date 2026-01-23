@@ -18,6 +18,7 @@ A modern, real-time chat application built with **Next.js**, **Express**, **Sock
 
 - **Instant Messaging**: Socket.IO powered real-time message delivery
 - **Image Sharing**: Send and receive images with Cloudinary integration
+- **Delete Conversations**: Remove entire conversation history with confirmation dialog
 - **Typing Indicators**: See when someone is typing
 - **Read Receipts**: Double check marks for read messages
 - **Optimistic Updates**: Messages appear instantly before server confirmation
@@ -36,6 +37,7 @@ A modern, real-time chat application built with **Next.js**, **Express**, **Sock
 - **PWA Support**: Install as a native app on mobile/desktop
 - **Smooth Animations**: Framer Motion powered transitions
 - **Modern UI**: Built with Radix UI and Tailwind CSS
+- **Fallback Images**: Placeholder images for broken avatars and attachments
 
 ### 🚀 Performance
 
@@ -152,19 +154,17 @@ The app uses **Socket.IO** for bidirectional, event-based communication between 
 - Server resets all users to "offline" on startup (prevents stale states)
 - Status updates broadcast to all connected clients in real-time
 
-## 🤝 Contributing
+### Delete Conversation
 
-Contributions, issues, and feature requests are welcome!
-
-## 📝 License
-
-This project is [ISC](https://opensource.org/licenses/ISC) licensed.
+- Delete entire conversation history between two users
+- Confirmation dialog with warning about cross-user deletion
+- Permanently removes all messages from both sides
+- Real-time updates ensure conversation list stays synchronized
 
 ## 👨‍💻 Author
 
-**Gaurav**  
-GitHub: [@gourav-1711](https://github.com/gourav-1711)
+**Gourav**  
 
----
 
-**Built with ❤️ using Next.js and Socket.IO**
+
+**Built with ❤️ using Next.js and Socket.IO and Node js**

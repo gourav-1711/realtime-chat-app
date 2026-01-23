@@ -426,6 +426,7 @@ Content-Type: application/json
 | `POST` | `/api/message/mark-all-as-read/:withUserId` | Mark all messages as read    | -                                        | Yes           |
 | `POST` | `/api/message/get-all-msg`                  | Get all messages with a user | `withUserId`                             | Yes           |
 | `POST` | `/api/message/get-conversation-with-other`  | Get conversation preview     | `withUserId`                             | Yes           |
+| `POST` | `/api/message/delete-conversation`          | Delete conversation          | `withUserId`                             | Yes           |
 
 **Example Request** (Send Message):
 
@@ -645,17 +646,6 @@ Error: Invalid login
 
 ---
 
-## 📞 Support
-
-If you encounter issues:
-
-1. Check the [Troubleshooting](#-troubleshooting) section
-2. Review backend console logs
-3. Check browser console for frontend errors
-4. contact me : 8387840848 : whatsapp
-5. gouravdadhich34@gmail.com : email
-
----
 
 ## 🎉 Next Steps
 
